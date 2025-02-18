@@ -13,9 +13,12 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
     // Constants
     uint256 public constant MIN_VALUE = 0.001 ether;
     uint256 public constant MAX_VALUE = 0.01 ether;
+    uint256 public constant MAX_BET_PERCENT = 100; // 1% = 100 since we'll divide by 10000
 
     // Owner
     address public admin;
+    uint256 public pauseTime;
+    bool public pause;
 
     // VRF Configuration
     bytes32 public keyHash; // BASE 30 gwei hash lane
@@ -36,6 +39,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
         if (msg.sender != admin) revert OnlyOwner();
         _;
     }
+
 
     /**
      * @notice Constructor initializes the contract with VRF coordinator and subscription ID
@@ -118,6 +122,12 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
         emit VRFConfigUpdated("numWords", _numWords);
     }
 
+    function setPause(bool _pause) external onlyAdmin {
+        pauseTime = _pause ? block.timestamp : 0;
+        pause = _pause;
+        emit ContractPaused();
+    }
+
     /**
      * @notice Requests random words from Chainlink VRF for the game
      * @param player Address of the player making the request
@@ -130,7 +140,13 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
         bool enableNativePayment,
         uint8 multiplier
     ) external payable returns (uint256 requestId) {
+        if (pause) revert ContractIsPaused();
+
         if (msg.value < MIN_VALUE || msg.value > MAX_VALUE) {
+            revert InvalidValue();
+        }
+
+        if (msg.value > (address(this).balance * MAX_BET_PERCENT) / 10000) {
             revert InvalidValue();
         }
 
@@ -188,12 +204,20 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
         if (_randomWords[0] >= numberToBeat) {
             uint256 winAmount = s_requests[_requestId].value * multipliers[multiplier].winMultiplier;
             address player = s_requests[_requestId].player;
-            payable(player).transfer(winAmount);
+            payable(player).transfer(winAmount > address(this).balance ? address(this).balance : winAmount); //TODO:  give back the ETH to the player
             
             emit ShotWon(_requestId, winAmount, player);
         }
-        
         emit RequestFulfilled(_requestId, _randomWords);
+    }
+
+
+    function withdraw() external onlyAdmin {
+        if (block.timestamp < pauseTime + 1 days || block.timestamp > pauseTime + 3 days) {
+            revert WithdrawTimeInvalid();
+        }
+
+        payable(admin).transfer(address(this).balance);
     }
 
 }
