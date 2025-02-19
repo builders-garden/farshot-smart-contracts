@@ -1,27 +1,31 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import "hardhat/console.sol";
+import "hardhat/console.sol"; // Remove this import in production
 import {IFarshot} from "./IFarshot.sol";
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title Farshot
-/// @notice Contract for handling random number generation using Chainlink VRF
-contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
+/// @notice Contract for handling a chance-based game using Chainlink VRF for randomness.
+contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
+    // Custom error for invalid random words length.
+    error InvalidRandomWords();
 
     // Constants
-    uint256 public constant MIN_VALUE = 0.001 ether;
-    uint256 public constant MAX_VALUE = 0.01 ether;
+    uint256 public constant MIN_VALUE = 0.00001 ether;
+    uint256 public constant MAX_VALUE = 1 ether;
     uint256 public constant MAX_BET_PERCENT = 100; // 1% = 100 since we'll divide by 10000
 
     // Owner
     address public admin;
+    // Although OZ's Pausable provides a paused() flag, we also record pauseTime for withdrawal logic.
     uint256 public pauseTime;
-    bool public pause;
 
     // VRF Configuration
-    bytes32 public keyHash; // BASE 30 gwei hash lane
+    bytes32 public keyHash; // BASE 30 gwei hash lane.
     uint32 public callbackGasLimit;
     uint16 public requestConfirmations;
     uint32 public numWords;
@@ -31,7 +35,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
     uint256 public lastRequestId;
 
     // Mappings
-    mapping(uint256 => RequestStatus) public s_requests; 
+    mapping(uint256 => RequestStatus) public s_requests;
     mapping(uint8 => Multiplier) public multipliers;
 
     // Modifiers
@@ -40,11 +44,14 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
         _;
     }
 
-
     /**
-     * @notice Constructor initializes the contract with VRF coordinator and subscription ID
-     * @param _subscriptionId Chainlink VRF subscription ID for random number generation
-     * @dev VRF Coordinator address: 0xd5D517aBE5cF79B7e95eC98dB0f0277788aFF634 (BASE)
+     * @notice Constructor initializes the contract with VRF parameters and default multiplier settings.
+     * @param _admin The address of the admin.
+     * @param _subscriptionId Chainlink VRF subscription ID.
+     * @param _keyHash The key hash for VRF requests.
+     * @param _callbackGasLimit The gas limit for the VRF callback.
+     * @param _requestConfirmations The number of confirmations for the VRF request.
+     * @param _numWords The number of random words to request.
      */
     constructor(
         address _admin,
@@ -60,26 +67,31 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
         callbackGasLimit = _callbackGasLimit;
         requestConfirmations = _requestConfirmations;
         numWords = _numWords;
+
+        // Initialize default multiplier settings.
+        // For example purposes, these values can be adjusted as needed.
+        multipliers[1] = Multiplier({ numberToBeat: 50, winMultiplier: 2 });
+        multipliers[2] = Multiplier({ numberToBeat: 70, winMultiplier: 3 });
+        multipliers[3] = Multiplier({ numberToBeat: 90, winMultiplier: 4 });
     }
 
     /**
-     * @notice Returns the status of a random word request
-     * @param _requestId The ID of the request to check
-     * @return fulfilled Boolean indicating if the request was fulfilled
-     * @return randomWords Array of random values if the request was fulfilled
+     * @notice Returns the status of a VRF request.
+     * @param _requestId The ID of the request.
+     * @return fulfilled Boolean indicating if the request was fulfilled.
+     * @return randomWords The array of random words received.
      */
     function getRequestStatus(
         uint256 _requestId
     ) external view returns (bool fulfilled, uint256[] memory randomWords) {
         if (!s_requests[_requestId].exists) revert RequestNotFound();
-        
         RequestStatus memory request = s_requests[_requestId];
         return (request.fulfilled, request.randomWords);
     }
 
     /**
-     * @notice Updates the VRF subscription ID
-     * @param _subscriptionId New subscription ID
+     * @notice Updates the VRF subscription ID.
+     * @param _subscriptionId The new subscription ID.
      */
     function setSubscriptionId(uint256 _subscriptionId) external onlyAdmin {
         s_subscriptionId = _subscriptionId;
@@ -87,8 +99,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
     }
 
     /**
-     * @notice Updates the key hash for VRF requests
-     * @param _keyHash New key hash value
+     * @notice Updates the key hash used for VRF requests.
+     * @param _keyHash The new key hash.
      */
     function setKeyHash(bytes32 _keyHash) external onlyAdmin {
         keyHash = _keyHash;
@@ -96,8 +108,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
     }
 
     /**
-     * @notice Updates the callback gas limit for VRF requests
-     * @param _callbackGasLimit New gas limit value
+     * @notice Updates the callback gas limit for VRF requests.
+     * @param _callbackGasLimit The new gas limit.
      */
     function setCallbackGasLimit(uint32 _callbackGasLimit) external onlyAdmin {
         callbackGasLimit = _callbackGasLimit;
@@ -105,8 +117,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
     }
 
     /**
-     * @notice Updates the number of confirmations required for VRF requests
-     * @param _requestConfirmations New confirmations value
+     * @notice Updates the number of confirmations required for VRF requests.
+     * @param _requestConfirmations The new number of confirmations.
      */
     function setRequestConfirmations(uint16 _requestConfirmations) external onlyAdmin {
         requestConfirmations = _requestConfirmations;
@@ -114,47 +126,50 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
     }
 
     /**
-     * @notice Updates the number of random words to request
-     * @param _numWords New number of words value
+     * @notice Pauses or unpauses the contract.
+     * @param pause True to pause the contract, false to unpause.
+     * @dev When pausing, the current timestamp is recorded for withdrawal timing.
      */
-    function setNumWords(uint32 _numWords) external onlyAdmin {
-        numWords = _numWords;
-        emit VRFConfigUpdated("numWords", _numWords);
-    }
-
-    function setPause(bool _pause) external onlyAdmin {
-        pauseTime = _pause ? block.timestamp : 0;
-        pause = _pause;
+    function setPause(bool pause) external onlyAdmin {
+        if (pause) {
+            _pause(); // Call OZ's internal pause
+            pauseTime = block.timestamp;
+        } else {
+            _unpause(); // Call OZ's internal unpause
+            pauseTime = 0;
+        }
         emit ContractPaused();
     }
 
     /**
-     * @notice Requests random words from Chainlink VRF for the game
-     * @param player Address of the player making the request
-     * @param enableNativePayment True to enable payment in native tokens, false for LINK
-     * @param multiplier Selected multiplier (1, 2, or 3)
-     * @return requestId Unique identifier for the VRF request
+     * @notice Requests random words from Chainlink VRF for a player's game bet.
+     * @param player The address of the player.
+     * @param enableNativePayment True if native payment is enabled.
+     * @param multiplier The selected multiplier (allowed values: 1, 2, or 3).
+     * @return requestId The unique identifier of the VRF request.
      */
     function requestRandomWords(
         address player,
         bool enableNativePayment,
         uint8 multiplier
-    ) external payable returns (uint256 requestId) {
-        if (pause) revert ContractIsPaused();
-
+    ) external payable whenNotPaused nonReentrant returns (uint256 requestId) {
+        // Validate bet value
         if (msg.value < MIN_VALUE || msg.value > MAX_VALUE) {
             revert InvalidValue();
         }
 
-        if (msg.value > (address(this).balance * MAX_BET_PERCENT) / 10000) {
+        // Determine the contract balance before the current deposit
+        uint256 currentBalance = address(this).balance - msg.value;
+        if (currentBalance == 0 || msg.value > (currentBalance * MAX_BET_PERCENT) / 10000) {
             revert InvalidValue();
         }
 
+        // Validate the multiplier selection
         if (multiplier != 1 && multiplier != 2 && multiplier != 3) {
             revert InvalidMultiplier();
         }
 
-        // Will revert if subscription is not set and funded.
+        // Request random words from the VRF coordinator
         requestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
                 keyHash: keyHash,
@@ -170,6 +185,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
             })
         );
 
+        // Record the request details
         s_requests[requestId] = RequestStatus({
             player: player,
             value: msg.value,
@@ -185,15 +201,16 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
     }
 
     /**
-     * @notice Callback function used by VRF Coordinator to return the random number
-     * @param _requestId The ID of the request
-     * @param _randomWords Array of random values generated by Chainlink VRF
+     * @notice Callback function used by the VRF coordinator to provide randomness.
+     * @param _requestId The ID of the VRF request.
+     * @param _randomWords The array of random words provided.
      */
     function fulfillRandomWords(
         uint256 _requestId,
         uint256[] calldata _randomWords
-    ) internal override {
+    ) internal override nonReentrant {
         if (!s_requests[_requestId].exists) revert RequestNotFound();
+        if (_randomWords.length != numWords) revert InvalidRandomWords();
 
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
@@ -201,23 +218,44 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot {
         uint8 multiplier = s_requests[_requestId].multiplier;
         uint256 numberToBeat = multipliers[multiplier].numberToBeat;
 
+        // Check if the random word meets the win condition
         if (_randomWords[0] >= numberToBeat) {
             uint256 winAmount = s_requests[_requestId].value * multipliers[multiplier].winMultiplier;
             address player = s_requests[_requestId].player;
-            payable(player).transfer(winAmount > address(this).balance ? address(this).balance : winAmount); //TODO:  give back the ETH to the player
+            uint256 payout;
             
-            emit ShotWon(_requestId, winAmount, player);
+            if (address(this).balance == 0) {
+                // If contract has no balance, no payout possible
+                payout = 0;
+            } else if (winAmount > address(this).balance) {
+                // If can't pay full amount, return the original bet or whatever is left in the contract
+                payout = address(this).balance < s_requests[_requestId].value ? 
+                    address(this).balance : s_requests[_requestId].value;
+            } else {
+                payout = winAmount;
+            }
+            
+            if (payout > 0) {
+                (bool success, ) = player.call{value: payout}("");
+                require(success, "Transfer failed");
+            }
+            emit ShotWon(_requestId, payout, player);
         }
         emit RequestFulfilled(_requestId, _randomWords);
     }
 
-
-    function withdraw() external onlyAdmin {
-        if (block.timestamp < pauseTime + 1 days || block.timestamp > pauseTime + 3 days) {
+    /**
+     * @notice Allows the admin to withdraw the contract's balance.
+     * @dev Withdrawals are permitted only after 24 hours have passed since the contract was paused.
+     */
+    function withdraw() external onlyAdmin nonReentrant {
+        if (block.timestamp < pauseTime + 24 hours) {
             revert WithdrawTimeInvalid();
         }
-
-        payable(admin).transfer(address(this).balance);
+        (bool success, ) = admin.call{value: address(this).balance}("");
+        require(success, "Withdrawal failed");
     }
 
+    /// @notice Allows the contract to receive ETH
+    receive() external payable {}
 }
