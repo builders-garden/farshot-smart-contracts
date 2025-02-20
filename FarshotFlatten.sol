@@ -702,7 +702,7 @@ pragma solidity ^0.8.28;
 interface IFarshot {
     // Events
     event RequestSent(uint256 requestId, uint32 numWords, address player, uint8 multiplier);
-    event RequestFulfilled(uint256 requestId, uint256[] randomWords);
+    event RequestFulfilled(uint256 requestId, uint256[] randomWords, uint256 payout, address player, bool win);
     event ShotWon(uint256 requestId, uint256 winAmount, address player);
     event VRFConfigUpdated(string configType, uint256 value);
     event ContractPaused();
@@ -2331,9 +2331,12 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     error InvalidRandomWords();
 
     // Constants
-    uint256 public constant MIN_VALUE = 0.00001 ether;
-    uint256 public constant MAX_VALUE = 1 ether;
+    uint256 public constant MIN_VALUE = 0.00001 ether; //TODO: Change
+    uint256 public constant MAX_VALUE = 1 ether; //TODO: Change
     uint256 public constant MAX_BET_PERCENT = 100; // 1% = 100 since we'll divide by 10000
+    uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203130000000000000000000000000000000000000000000000000000000000000;
+    uint256 public constant NUMBER_TO_BEAT_2 = 93212631836039540000000000000000000000000000000000000000000000000000000000000;
+    uint256 public constant NUMBER_TO_BEAT_3 = 105370801205957740000000000000000000000000000000000000000000000000000000000000;
 
     // Owner
     address public admin;
@@ -2363,7 +2366,6 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     /**
      * @notice Constructor initializes the contract with VRF parameters and default multiplier settings.
      * @param _admin The address of the admin.
-     * @param _subscriptionId Chainlink VRF subscription ID.
      * @param _keyHash The key hash for VRF requests.
      * @param _callbackGasLimit The gas limit for the VRF callback.
      * @param _requestConfirmations The number of confirmations for the VRF request.
@@ -2371,24 +2373,32 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
      */
     constructor(
         address _admin,
-        uint256 _subscriptionId,
+        address _vrfCoordinator,
         bytes32 _keyHash,
         uint32 _callbackGasLimit,
         uint16 _requestConfirmations,
         uint32 _numWords
-    ) VRFConsumerBaseV2Plus(0xd5D517aBE5cF79B7e95eC98dB0f0277788aFF634) {
+    ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
         admin = _admin;
-        s_subscriptionId = _subscriptionId;
         keyHash = _keyHash;
         callbackGasLimit = _callbackGasLimit;
         requestConfirmations = _requestConfirmations;
         numWords = _numWords;
 
         // Initialize default multiplier settings.
-        // For example purposes, these values can be adjusted as needed.
-        multipliers[1] = Multiplier({ numberToBeat: 50, winMultiplier: 2 });
-        multipliers[2] = Multiplier({ numberToBeat: 70, winMultiplier: 3 });
-        multipliers[3] = Multiplier({ numberToBeat: 90, winMultiplier: 4 });
+        multipliers[1] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_1, winMultiplier: 2 });
+        multipliers[2] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_2, winMultiplier: 3 });
+        multipliers[3] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_3, winMultiplier: 4 });
+    }
+
+    /**
+     * @notice Initializes the VRF subscription ID
+     * @param _subscriptionId The subscription ID to use for VRF requests
+     */
+    function initialize(uint256 _subscriptionId) external onlyAdmin {
+        if (s_subscriptionId != 0) revert("Already initialized");
+        s_subscriptionId = _subscriptionId;
+        emit VRFConfigUpdated("subscriptionId", _subscriptionId);
     }
 
     /**
@@ -2533,12 +2543,13 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
 
         uint8 multiplier = s_requests[_requestId].multiplier;
         uint256 numberToBeat = multipliers[multiplier].numberToBeat;
+        uint256 payout;
 
         // Check if the random word meets the win condition
         if (_randomWords[0] >= numberToBeat) {
             uint256 winAmount = s_requests[_requestId].value * multipliers[multiplier].winMultiplier;
             address player = s_requests[_requestId].player;
-            uint256 payout;
+            
             
             if (address(this).balance == 0) {
                 // If contract has no balance, no payout possible
@@ -2555,9 +2566,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
                 (bool success, ) = player.call{value: payout}("");
                 require(success, "Transfer failed");
             }
-            emit ShotWon(_requestId, payout, player);
         }
-        emit RequestFulfilled(_requestId, _randomWords);
+        emit RequestFulfilled(_requestId, _randomWords, payout, s_requests[_requestId].player, _randomWords[0] >= numberToBeat);
     }
 
     /**

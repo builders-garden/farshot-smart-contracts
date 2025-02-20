@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 interface IFarshot {
     // Events
     event RequestSent(uint256 requestId, uint32 numWords, address player, uint8 multiplier);
-    event RequestFulfilled(uint256 requestId, uint256[] randomWords);
+    event RequestFulfilled(uint256 requestId, uint256[] randomWords, uint256 payout, address player, bool win);
     event ShotWon(uint256 requestId, uint256 winAmount, address player);
     event VRFConfigUpdated(string configType, uint256 value);
     event ContractPaused();
