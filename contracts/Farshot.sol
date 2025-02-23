@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-import "hardhat/console.sol"; // Remove this import in production
 import {IFarshot} from "./IFarshot.sol";
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
@@ -15,14 +14,13 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     error InvalidRandomWords();
 
     // Constants
-    uint256 public constant MIN_VALUE = 0.00001 ether; //TODO: Change
-    uint256 public constant MAX_VALUE = 1 ether; //TODO: Change
-    uint256 public constant MAX_BET_PERCENT = 100; // 1% = 100 since we'll divide by 10000
-    uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203130000000000000000000000000000000000000000000000000000000000000;
-    uint256 public constant NUMBER_TO_BEAT_2 = 93212631836039540000000000000000000000000000000000000000000000000000000000000;
-    uint256 public constant NUMBER_TO_BEAT_3 = 105370801205957740000000000000000000000000000000000000000000000000000000000000;
-    uint256 public constant NUMBER_TO_BEAT_4 = 1; //TODO: Change
-    uint256 public constant NUMBER_TO_BEAT_5 = 1; //TODO: Change
+    uint256 public constant MAX_BET_PERCENT = 100; // 1%
+    uint256 private constant BASIS_POINTS = 10000; // 100% 
+    uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203136277024736080169305172695640876056135603477262484708312135761; //40.6%
+    uint256 public constant NUMBER_TO_BEAT_2 = 81054462466121336796499689506081535497288989265948394827620308805539190747954; //30.1%
+    uint256 public constant NUMBER_TO_BEAT_3 = 93212631836039537315974642931993765821882337655840654051763355126370069360147; //19.6%
+    uint256 public constant NUMBER_TO_BEAT_4 = 99233820476379979478000334152445537030252376858453963381815149494781552101424; //14.4%
+    uint256 public constant NUMBER_TO_BEAT_5 = 105370801205957737835449596357905996146475686045732913275906401447200947972340; //9.1%
 
     // Owner
     address public admin;
@@ -40,7 +38,10 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     uint256 public lastRequestId;
 
     // Mappings
+    /// @notice Mapping of request IDs to their status details
     mapping(uint256 => RequestStatus) public s_requests;
+
+    /// @notice Mapping of multiplier levels to their configuration details
     mapping(uint8 => Multiplier) public multipliers;
 
     // Modifiers
@@ -72,10 +73,15 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
         numWords = _numWords;
 
         // Initialize default multiplier settings.
-        multipliers[1] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_1, winMultiplier: 2 });
-        multipliers[2] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_2, winMultiplier: 3 });
-        multipliers[3] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_3, winMultiplier: 4 });
+        multipliers[1] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_1, winMultiplier: 10000 }); // 100%
+        multipliers[2] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_2, winMultiplier: 15000 }); // 150%
+        multipliers[3] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_3, winMultiplier: 20000 }); // 200%
+        multipliers[4] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_4, winMultiplier: 25000 }); // 250%
+        multipliers[5] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_5, winMultiplier: 30000 }); // 300%
     }
+
+    /// @notice Allows the contract to receive ETH
+    receive() external payable {}
 
     /**
      * @notice Initializes the VRF subscription ID
@@ -99,24 +105,6 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
         if (!s_requests[_requestId].exists) revert RequestNotFound();
         RequestStatus memory request = s_requests[_requestId];
         return (request.fulfilled, request.randomWords);
-    }
-
-    /**
-     * @notice Updates the VRF subscription ID.
-     * @param _subscriptionId The new subscription ID.
-     */
-    function setSubscriptionId(uint256 _subscriptionId) external onlyAdmin {
-        s_subscriptionId = _subscriptionId;
-        emit VRFConfigUpdated("subscriptionId", _subscriptionId);
-    }
-
-    /**
-     * @notice Updates the key hash used for VRF requests.
-     * @param _keyHash The new key hash.
-     */
-    function setKeyHash(bytes32 _keyHash) external onlyAdmin {
-        keyHash = _keyHash;
-        emit VRFConfigUpdated("keyHash", uint256(_keyHash));
     }
 
     /**
@@ -156,28 +144,28 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     /**
      * @notice Requests random words from Chainlink VRF for a player's game bet.
      * @param player The address of the player.
-     * @param enableNativePayment True if native payment is enabled.
-     * @param multiplier The selected multiplier (allowed values: 1, 2, or 3).
+     * @param multiplier The selected multiplier (allowed values: 1, 2, 3, 4, or 5).
      * @return requestId The unique identifier of the VRF request.
      */
     function requestRandomWords(
         address player,
-        bool enableNativePayment,
         uint8 multiplier
     ) external payable whenNotPaused nonReentrant returns (uint256 requestId) {
         // Validate bet value
-        if (msg.value < MIN_VALUE || msg.value > MAX_VALUE) {
+        if (address(this).balance == 0) {
             revert InvalidValue();
         }
 
         // Determine the contract balance before the current deposit
         uint256 currentBalance = address(this).balance - msg.value;
-        if (currentBalance == 0 || msg.value > (currentBalance * MAX_BET_PERCENT) / 10000) {
+        uint256 maxCurrentBet = _calculatePercentage(currentBalance, MAX_BET_PERCENT);
+        
+        if (currentBalance == 0 || msg.value > maxCurrentBet){
             revert InvalidValue();
         }
 
         // Validate the multiplier selection
-        if (multiplier != 1 && multiplier != 2 && multiplier != 3) {
+        if (multiplier != 1 && multiplier != 2 && multiplier != 3 && multiplier != 4 && multiplier != 5) {
             revert InvalidMultiplier();
         }
 
@@ -191,7 +179,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
                 numWords: numWords,
                 extraArgs: VRFV2PlusClient._argsToBytes(
                     VRFV2PlusClient.ExtraArgsV1({
-                        nativePayment: enableNativePayment
+                        nativePayment: true
                     })
                 )
             })
@@ -226,6 +214,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
 
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
+        uint256 playerValue = s_requests[_requestId].value;
 
         uint8 multiplier = s_requests[_requestId].multiplier;
         uint256 numberToBeat = multipliers[multiplier].numberToBeat;
@@ -233,9 +222,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
 
         // Check if the random word meets the win condition
         if (_randomWords[0] >= numberToBeat) {
-            uint256 winAmount = s_requests[_requestId].value * multipliers[multiplier].winMultiplier;
+            uint256 winAmount = playerValue + ((playerValue * multipliers[multiplier].winMultiplier) / BASIS_POINTS);
             address player = s_requests[_requestId].player;
-            
             
             if (address(this).balance == 0) {
                 // If contract has no balance, no payout possible
@@ -260,14 +248,32 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
      * @notice Allows the admin to withdraw the contract's balance.
      * @dev Withdrawals are permitted only after 24 hours have passed since the contract was paused.
      */
-    function withdraw() external onlyAdmin nonReentrant {
-        if (block.timestamp < pauseTime + 24 hours) {
+    function withdraw() external onlyAdmin nonReentrant 
+    {   
+        if ( !paused() || block.timestamp < pauseTime + 24 hours) {
             revert WithdrawTimeInvalid();
         }
         (bool success, ) = admin.call{value: address(this).balance}("");
         require(success, "Withdrawal failed");
     }
 
-    /// @notice Allows the contract to receive ETH
-    receive() external payable {}
+    /**
+   * @notice Calculates percentage of an amount using basis points
+   * @dev Used for fee calculations
+   * @param amount The amount to calculate the percentage of
+   * @param basisPoints The basis points representing the percentage
+   * @return The calculated percentage of the amount
+   */
+  function _calculatePercentage(
+    uint256 amount,
+    uint256 basisPoints
+  ) internal pure returns (uint256) {
+    if (basisPoints == 0 || amount == 0) {
+      return 0;
+    }
+    if (basisPoints > BASIS_POINTS) {
+      revert InvalidReferralFeePercentage();
+    }
+    return (amount * basisPoints) / BASIS_POINTS;
+  }
 }

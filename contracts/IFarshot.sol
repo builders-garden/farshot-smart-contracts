@@ -14,6 +14,7 @@ interface IFarshot {
     error RequestNotFound();
     error InvalidValue();
     error InvalidMultiplier();
+    error InvalidReferralFeePercentage();
     error WithdrawTimeInvalid();
     error ContractIsPaused();
     // Structs
@@ -32,30 +33,3 @@ interface IFarshot {
         uint256 winMultiplier;
     }
 }
-
-
-/*
-
-// Initialize multipliers
-        multipliers[1] = Multiplier({
-            numberToBeat: 0x9b1ca4169f1f35c1efcb7656b85743c4d63a06e856c914ae5642fb690b628f2,
-            winMultiplier: 1
-        });
-        multipliers[2] = Multiplier({
-            numberToBeat: 0xb4a7ef927fb2e490f23c14b31f23b4f5f4d81f1a9c1f35c1efcb7656b85743c4,
-            winMultiplier: 15 // 1.5x (we'll divide by 10 in the payout calculation)
-        });
-        multipliers[3] = Multiplier({
-            numberToBeat: 0xce95a4169f1f35c1efcb7656b85743c4d63a06e856c914ae5642fb690b628f2d,
-            winMultiplier: 2
-        });
-        multipliers[4] = Multiplier({
-            numberToBeat: 0xdcb2e490f23c14b31f23b4f5f4d81f1a9c1f35c1efcb7656b85743c4d63a06e8,
-            winMultiplier: 25 // 2.5x (we'll divide by 10 in the payout calculation)
-        });
-        multipliers[5] = Multiplier({
-            numberToBeat: 0xe85c914ae5642fb690b628f2d63a06e856c914ae5642fb690b628f2d63a06e85,
-            winMultiplier: 3
-        });
-
-*/
