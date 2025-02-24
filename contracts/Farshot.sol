@@ -8,43 +8,52 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title Farshot
-/// @notice Contract for handling a chance-based game using Chainlink VRF for randomness.
+/// @notice Contract for handling a chance-based game using Chainlink VRF for randomness
+/// @dev Implements VRFConsumerBaseV2Plus for random number generation, Pausable for emergency stops, and ReentrancyGuard for security
 contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
-    // Custom error for invalid random words length.
+    /// @notice Error thrown when VRF returns incorrect number of random words
     error InvalidRandomWords();
 
-    // Constants
-    uint256 public constant MAX_BET_PERCENT = 100; // 1%
-    uint256 private constant BASIS_POINTS = 10000; // 100% 
-    uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203136277024736080169305172695640876056135603477262484708312135761; //40.6%
-    uint256 public constant NUMBER_TO_BEAT_2 = 81054462466121336796499689506081535497288989265948394827620308805539190747954; //30.1%
-    uint256 public constant NUMBER_TO_BEAT_3 = 93212631836039537315974642931993765821882337655840654051763355126370069360147; //19.6%
-    uint256 public constant NUMBER_TO_BEAT_4 = 99233820476379979478000334152445537030252376858453963381815149494781552101424; //14.4%
-    uint256 public constant NUMBER_TO_BEAT_5 = 105370801205957737835449596357905996146475686045732913275906401447200947972340; //9.1%
+    /// @notice Maximum bet as a percentage of contract balance (1%)
+    uint256 public constant MAX_BET_PERCENT = 100;
+    /// @notice Basis points constant for percentage calculations (100%)
+    uint256 private constant BASIS_POINTS = 10000;
+    /// @notice Threshold for 40.6% win chance
+    uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203136277024736080169305172695640876056135603477262484708312135761;
+    /// @notice Threshold for 30.1% win chance
+    uint256 public constant NUMBER_TO_BEAT_2 = 81054462466121336796499689506081535497288989265948394827620308805539190747954;
+    /// @notice Threshold for 19.6% win chance
+    uint256 public constant NUMBER_TO_BEAT_3 = 93212631836039537315974642931993765821882337655840654051763355126370069360147;
+    /// @notice Threshold for 14.4% win chance
+    uint256 public constant NUMBER_TO_BEAT_4 = 99233820476379979478000334152445537030252376858453963381815149494781552101424;
+    /// @notice Threshold for 9.1% win chance
+    uint256 public constant NUMBER_TO_BEAT_5 = 105370801205957737835449596357905996146475686045732913275906401447200947972340;
 
-    // Owner
+    /// @notice Address of the contract administrator
     address public admin;
-    // Although OZ's Pausable provides a paused() flag, we also record pauseTime for withdrawal logic.
+    /// @notice Timestamp when the contract was last paused
     uint256 public pauseTime;
 
-    // VRF Configuration
-    bytes32 public keyHash; // BASE 30 gwei hash lane.
+    /// @notice VRF key hash for BASE 30 gwei hash lane
+    bytes32 public keyHash;
+    /// @notice Gas limit for VRF callback
     uint32 public callbackGasLimit;
+    /// @notice Number of confirmations required for VRF request
     uint16 public requestConfirmations;
+    /// @notice Number of random words to request from VRF
     uint32 public numWords;
 
-    // State Variables
+    /// @notice VRF subscription ID
     uint256 public s_subscriptionId;
+    /// @notice ID of the most recent VRF request
     uint256 public lastRequestId;
 
-    // Mappings
     /// @notice Mapping of request IDs to their status details
     mapping(uint256 => RequestStatus) public s_requests;
-
     /// @notice Mapping of multiplier levels to their configuration details
     mapping(uint8 => Multiplier) public multipliers;
 
-    // Modifiers
+    /// @notice Ensures function can only be called by admin
     modifier onlyAdmin() {
         if (msg.sender != admin) revert OnlyOwner();
         _;
