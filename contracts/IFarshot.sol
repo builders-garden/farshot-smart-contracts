@@ -55,6 +55,12 @@ interface IFarshot {
     /// @notice Error thrown when attempting to perform an action while the contract is paused
     error ContractIsPaused();
 
+    /// @notice Error thrown when VRF returns incorrect number of random words
+    error InvalidRandomWords();
+
+    /// @notice Error thrown when an invalid admin address is provided
+    error InvalidAdminAddress();
+
     /// @notice Structure containing the status and details of a VRF request
     /// @param player The address of the player who made the request
     /// @param value The amount of ETH bet by the player

@@ -1,6 +1,6 @@
 // Sources flattened with hardhat v2.22.18 https://hardhat.org
 
-// SPDX-License-Identifier: MIT AND UNLICENSED
+// SPDX-License-Identifier: MIT
 
 // File @chainlink/contracts/src/v0.8/shared/interfaces/IOwnable.sol@v1.3.0
 
@@ -699,22 +699,73 @@ abstract contract ReentrancyGuard {
 // Original license: SPDX_License_Identifier: MIT
 pragma solidity ^0.8.28;
 
+/// @title IFarshot Interface
+/// @notice Interface for the Farshot contract, defining core functionality for a chance-based game
+/// @dev Implements events, errors, and data structures for the Farshot game system
 interface IFarshot {
-    // Events
+    /// @notice Emitted when a new random number request is sent to Chainlink VRF
+    /// @param requestId The unique identifier for the VRF request
+    /// @param numWords The number of random words requested
+    /// @param player The address of the player making the request
+    /// @param multiplier The selected multiplier level (1-5)
     event RequestSent(uint256 requestId, uint32 numWords, address player, uint8 multiplier);
+
+    /// @notice Emitted when a VRF request is fulfilled and the game result is determined
+    /// @param requestId The ID of the fulfilled request
+    /// @param randomWords The array of random words received from VRF
+    /// @param payout The amount paid to the player (0 if lost)
+    /// @param player The address of the player
+    /// @param win Whether the player won (true) or lost (false)
     event RequestFulfilled(uint256 requestId, uint256[] randomWords, uint256 payout, address player, bool win);
+
+    /// @notice Emitted when a player wins a shot
+    /// @param requestId The ID of the winning request
+    /// @param winAmount The amount won by the player
+    /// @param player The address of the winning player
     event ShotWon(uint256 requestId, uint256 winAmount, address player);
+
+    /// @notice Emitted when VRF configuration parameters are updated
+    /// @param configType The type of configuration parameter that was updated
+    /// @param value The new value for the configuration parameter
     event VRFConfigUpdated(string configType, uint256 value);
+
+    /// @notice Emitted when the contract's pause status changes
     event ContractPaused();
 
-    // Custom Errors
+    /// @notice Error thrown when a non-owner attempts to perform an admin-only action
     error OnlyOwner();
+
+    /// @notice Error thrown when attempting to access a non-existent VRF request
     error RequestNotFound();
+
+    /// @notice Error thrown when an invalid bet amount is provided
     error InvalidValue();
+
+    /// @notice Error thrown when an invalid multiplier is selected
     error InvalidMultiplier();
+
+    /// @notice Error thrown when an invalid referral fee percentage is set
+    error InvalidReferralFeePercentage();
+
+    /// @notice Error thrown when attempting to withdraw funds before the required time has passed
     error WithdrawTimeInvalid();
+
+    /// @notice Error thrown when attempting to perform an action while the contract is paused
     error ContractIsPaused();
-    // Structs
+
+    /// @notice Error thrown when VRF returns incorrect number of random words
+    error InvalidRandomWords();
+
+    /// @notice Error thrown when an invalid admin address is provided
+    error InvalidAdminAddress();
+
+    /// @notice Structure containing the status and details of a VRF request
+    /// @param player The address of the player who made the request
+    /// @param value The amount of ETH bet by the player
+    /// @param fulfilled Whether the VRF request has been fulfilled
+    /// @param exists Whether the request exists in the system
+    /// @param multiplier The selected multiplier level for this request
+    /// @param randomWords The array of random words received from VRF (empty until fulfilled)
     struct RequestStatus {
         address player;
         uint256 value;
@@ -724,7 +775,9 @@ interface IFarshot {
         uint256[] randomWords;
     }
 
-    // Structs
+    /// @notice Structure defining the configuration for each multiplier level
+    /// @param numberToBeat The threshold number that must be exceeded to win
+    /// @param winMultiplier The multiplier applied to the bet amount on winning (in basis points)
     struct Multiplier {
         uint256 numberToBeat;
         uint256 winMultiplier;
@@ -732,1592 +785,9 @@ interface IFarshot {
 }
 
 
-/*
-
-// Initialize multipliers
-        multipliers[1] = Multiplier({
-            numberToBeat: 0x9b1ca4169f1f35c1efcb7656b85743c4d63a06e856c914ae5642fb690b628f2,
-            winMultiplier: 1
-        });
-        multipliers[2] = Multiplier({
-            numberToBeat: 0xb4a7ef927fb2e490f23c14b31f23b4f5f4d81f1a9c1f35c1efcb7656b85743c4,
-            winMultiplier: 15 // 1.5x (we'll divide by 10 in the payout calculation)
-        });
-        multipliers[3] = Multiplier({
-            numberToBeat: 0xce95a4169f1f35c1efcb7656b85743c4d63a06e856c914ae5642fb690b628f2d,
-            winMultiplier: 2
-        });
-        multipliers[4] = Multiplier({
-            numberToBeat: 0xdcb2e490f23c14b31f23b4f5f4d81f1a9c1f35c1efcb7656b85743c4d63a06e8,
-            winMultiplier: 25 // 2.5x (we'll divide by 10 in the payout calculation)
-        });
-        multipliers[5] = Multiplier({
-            numberToBeat: 0xe85c914ae5642fb690b628f2d63a06e856c914ae5642fb690b628f2d63a06e85,
-            winMultiplier: 3
-        });
-
-*/
-
-
-// File hardhat/console.sol@v2.22.18
-
-// Original license: SPDX_License_Identifier: MIT
-pragma solidity >=0.4.22 <0.9.0;
-
-library console {
-    address constant CONSOLE_ADDRESS =
-        0x000000000000000000636F6e736F6c652e6c6f67;
-
-    function _sendLogPayloadImplementation(bytes memory payload) internal view {
-        address consoleAddress = CONSOLE_ADDRESS;
-        /// @solidity memory-safe-assembly
-        assembly {
-            pop(
-                staticcall(
-                    gas(),
-                    consoleAddress,
-                    add(payload, 32),
-                    mload(payload),
-                    0,
-                    0
-                )
-            )
-        }
-    }
-
-    function _castToPure(
-      function(bytes memory) internal view fnIn
-    ) internal pure returns (function(bytes memory) pure fnOut) {
-        assembly {
-            fnOut := fnIn
-        }
-    }
-
-    function _sendLogPayload(bytes memory payload) internal pure {
-        _castToPure(_sendLogPayloadImplementation)(payload);
-    }
-
-    function log() internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log()"));
-    }
-
-    function logInt(int256 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(int256)", p0));
-    }
-
-    function logUint(uint256 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256)", p0));
-    }
-
-    function logString(string memory p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string)", p0));
-    }
-
-    function logBool(bool p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool)", p0));
-    }
-
-    function logAddress(address p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address)", p0));
-    }
-
-    function logBytes(bytes memory p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes)", p0));
-    }
-
-    function logBytes1(bytes1 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes1)", p0));
-    }
-
-    function logBytes2(bytes2 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes2)", p0));
-    }
-
-    function logBytes3(bytes3 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes3)", p0));
-    }
-
-    function logBytes4(bytes4 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes4)", p0));
-    }
-
-    function logBytes5(bytes5 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes5)", p0));
-    }
-
-    function logBytes6(bytes6 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes6)", p0));
-    }
-
-    function logBytes7(bytes7 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes7)", p0));
-    }
-
-    function logBytes8(bytes8 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes8)", p0));
-    }
-
-    function logBytes9(bytes9 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes9)", p0));
-    }
-
-    function logBytes10(bytes10 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes10)", p0));
-    }
-
-    function logBytes11(bytes11 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes11)", p0));
-    }
-
-    function logBytes12(bytes12 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes12)", p0));
-    }
-
-    function logBytes13(bytes13 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes13)", p0));
-    }
-
-    function logBytes14(bytes14 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes14)", p0));
-    }
-
-    function logBytes15(bytes15 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes15)", p0));
-    }
-
-    function logBytes16(bytes16 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes16)", p0));
-    }
-
-    function logBytes17(bytes17 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes17)", p0));
-    }
-
-    function logBytes18(bytes18 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes18)", p0));
-    }
-
-    function logBytes19(bytes19 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes19)", p0));
-    }
-
-    function logBytes20(bytes20 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes20)", p0));
-    }
-
-    function logBytes21(bytes21 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes21)", p0));
-    }
-
-    function logBytes22(bytes22 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes22)", p0));
-    }
-
-    function logBytes23(bytes23 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes23)", p0));
-    }
-
-    function logBytes24(bytes24 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes24)", p0));
-    }
-
-    function logBytes25(bytes25 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes25)", p0));
-    }
-
-    function logBytes26(bytes26 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes26)", p0));
-    }
-
-    function logBytes27(bytes27 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes27)", p0));
-    }
-
-    function logBytes28(bytes28 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes28)", p0));
-    }
-
-    function logBytes29(bytes29 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes29)", p0));
-    }
-
-    function logBytes30(bytes30 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes30)", p0));
-    }
-
-    function logBytes31(bytes31 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes31)", p0));
-    }
-
-    function logBytes32(bytes32 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bytes32)", p0));
-    }
-
-    function log(uint256 p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256)", p0));
-    }
-
-    function log(string memory p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string)", p0));
-    }
-
-    function log(bool p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool)", p0));
-    }
-
-    function log(address p0) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address)", p0));
-    }
-
-    function log(uint256 p0, uint256 p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256)", p0, p1));
-    }
-
-    function log(uint256 p0, string memory p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string)", p0, p1));
-    }
-
-    function log(uint256 p0, bool p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool)", p0, p1));
-    }
-
-    function log(uint256 p0, address p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address)", p0, p1));
-    }
-
-    function log(string memory p0, uint256 p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256)", p0, p1));
-    }
-
-    function log(string memory p0, string memory p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string)", p0, p1));
-    }
-
-    function log(string memory p0, bool p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool)", p0, p1));
-    }
-
-    function log(string memory p0, address p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address)", p0, p1));
-    }
-
-    function log(bool p0, uint256 p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256)", p0, p1));
-    }
-
-    function log(bool p0, string memory p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string)", p0, p1));
-    }
-
-    function log(bool p0, bool p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool)", p0, p1));
-    }
-
-    function log(bool p0, address p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address)", p0, p1));
-    }
-
-    function log(address p0, uint256 p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256)", p0, p1));
-    }
-
-    function log(address p0, string memory p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string)", p0, p1));
-    }
-
-    function log(address p0, bool p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool)", p0, p1));
-    }
-
-    function log(address p0, address p1) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address)", p0, p1));
-    }
-
-    function log(uint256 p0, uint256 p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,uint256)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, uint256 p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,string)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, uint256 p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,bool)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, uint256 p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,address)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, string memory p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,uint256)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, string memory p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,string)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, string memory p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,bool)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, string memory p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,address)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, bool p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,uint256)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, bool p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,string)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, bool p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,bool)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, bool p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,address)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, address p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,uint256)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, address p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,string)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, address p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,bool)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, address p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,address)", p0, p1, p2));
-    }
-
-    function log(string memory p0, uint256 p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,uint256)", p0, p1, p2));
-    }
-
-    function log(string memory p0, uint256 p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,string)", p0, p1, p2));
-    }
-
-    function log(string memory p0, uint256 p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,bool)", p0, p1, p2));
-    }
-
-    function log(string memory p0, uint256 p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,address)", p0, p1, p2));
-    }
-
-    function log(string memory p0, string memory p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,uint256)", p0, p1, p2));
-    }
-
-    function log(string memory p0, string memory p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,string)", p0, p1, p2));
-    }
-
-    function log(string memory p0, string memory p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,bool)", p0, p1, p2));
-    }
-
-    function log(string memory p0, string memory p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,address)", p0, p1, p2));
-    }
-
-    function log(string memory p0, bool p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,uint256)", p0, p1, p2));
-    }
-
-    function log(string memory p0, bool p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,string)", p0, p1, p2));
-    }
-
-    function log(string memory p0, bool p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,bool)", p0, p1, p2));
-    }
-
-    function log(string memory p0, bool p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,address)", p0, p1, p2));
-    }
-
-    function log(string memory p0, address p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,uint256)", p0, p1, p2));
-    }
-
-    function log(string memory p0, address p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,string)", p0, p1, p2));
-    }
-
-    function log(string memory p0, address p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,bool)", p0, p1, p2));
-    }
-
-    function log(string memory p0, address p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,address)", p0, p1, p2));
-    }
-
-    function log(bool p0, uint256 p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,uint256)", p0, p1, p2));
-    }
-
-    function log(bool p0, uint256 p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,string)", p0, p1, p2));
-    }
-
-    function log(bool p0, uint256 p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,bool)", p0, p1, p2));
-    }
-
-    function log(bool p0, uint256 p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,address)", p0, p1, p2));
-    }
-
-    function log(bool p0, string memory p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,uint256)", p0, p1, p2));
-    }
-
-    function log(bool p0, string memory p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,string)", p0, p1, p2));
-    }
-
-    function log(bool p0, string memory p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,bool)", p0, p1, p2));
-    }
-
-    function log(bool p0, string memory p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,address)", p0, p1, p2));
-    }
-
-    function log(bool p0, bool p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,uint256)", p0, p1, p2));
-    }
-
-    function log(bool p0, bool p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,string)", p0, p1, p2));
-    }
-
-    function log(bool p0, bool p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,bool)", p0, p1, p2));
-    }
-
-    function log(bool p0, bool p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,address)", p0, p1, p2));
-    }
-
-    function log(bool p0, address p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,uint256)", p0, p1, p2));
-    }
-
-    function log(bool p0, address p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,string)", p0, p1, p2));
-    }
-
-    function log(bool p0, address p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,bool)", p0, p1, p2));
-    }
-
-    function log(bool p0, address p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,address)", p0, p1, p2));
-    }
-
-    function log(address p0, uint256 p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,uint256)", p0, p1, p2));
-    }
-
-    function log(address p0, uint256 p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,string)", p0, p1, p2));
-    }
-
-    function log(address p0, uint256 p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,bool)", p0, p1, p2));
-    }
-
-    function log(address p0, uint256 p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,address)", p0, p1, p2));
-    }
-
-    function log(address p0, string memory p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,uint256)", p0, p1, p2));
-    }
-
-    function log(address p0, string memory p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,string)", p0, p1, p2));
-    }
-
-    function log(address p0, string memory p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,bool)", p0, p1, p2));
-    }
-
-    function log(address p0, string memory p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,address)", p0, p1, p2));
-    }
-
-    function log(address p0, bool p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,uint256)", p0, p1, p2));
-    }
-
-    function log(address p0, bool p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,string)", p0, p1, p2));
-    }
-
-    function log(address p0, bool p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,bool)", p0, p1, p2));
-    }
-
-    function log(address p0, bool p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,address)", p0, p1, p2));
-    }
-
-    function log(address p0, address p1, uint256 p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,uint256)", p0, p1, p2));
-    }
-
-    function log(address p0, address p1, string memory p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,string)", p0, p1, p2));
-    }
-
-    function log(address p0, address p1, bool p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,bool)", p0, p1, p2));
-    }
-
-    function log(address p0, address p1, address p2) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,address)", p0, p1, p2));
-    }
-
-    function log(uint256 p0, uint256 p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, uint256 p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,uint256,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, string memory p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,string,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, bool p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,bool,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(uint256 p0, address p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(uint256,address,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, uint256 p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,uint256,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, string memory p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,string,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, bool p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,bool,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(string memory p0, address p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(string,address,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, uint256 p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,uint256,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, string memory p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,string,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, bool p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,bool,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(bool p0, address p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(bool,address,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, uint256 p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,uint256,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, string memory p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,string,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, bool p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,bool,address,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, uint256 p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,uint256,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, uint256 p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,uint256,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, uint256 p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,uint256,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, uint256 p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,uint256,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, string memory p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,string,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, string memory p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,string,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, string memory p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,string,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, string memory p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,string,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, bool p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,bool,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, bool p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,bool,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, bool p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,bool,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, bool p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,bool,address)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, address p2, uint256 p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,address,uint256)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, address p2, string memory p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,address,string)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, address p2, bool p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,address,bool)", p0, p1, p2, p3));
-    }
-
-    function log(address p0, address p1, address p2, address p3) internal pure {
-        _sendLogPayload(abi.encodeWithSignature("log(address,address,address,address)", p0, p1, p2, p3));
-    }
-}
-
-
 // File contracts/Farshot.sol
 
-// Original license: SPDX_License_Identifier: UNLICENSED
+// Original license: SPDX_License_Identifier: MIT
 pragma solidity ^0.8.28;
 
 
@@ -2325,39 +795,48 @@ pragma solidity ^0.8.28;
 
 
 /// @title Farshot
-/// @notice Contract for handling a chance-based game using Chainlink VRF for randomness.
+/// @notice Contract for handling a chance-based game using Chainlink VRF for randomness
+/// @dev Implements VRFConsumerBaseV2Plus for random number generation, Pausable for emergency stops, and ReentrancyGuard for security
 contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
-    // Custom error for invalid random words length.
-    error InvalidRandomWords();
 
-    // Constants
-    uint256 public constant MIN_VALUE = 0.00001 ether; //TODO: Change
-    uint256 public constant MAX_VALUE = 1 ether; //TODO: Change
-    uint256 public constant MAX_BET_PERCENT = 100; // 1% = 100 since we'll divide by 10000
-    uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203130000000000000000000000000000000000000000000000000000000000000;
-    uint256 public constant NUMBER_TO_BEAT_2 = 93212631836039540000000000000000000000000000000000000000000000000000000000000;
-    uint256 public constant NUMBER_TO_BEAT_3 = 105370801205957740000000000000000000000000000000000000000000000000000000000000;
+    /// @notice Maximum bet as a percentage of contract balance (1%)
+    uint256 public constant MAX_BET_PERCENT = 100;
+    /// @notice Basis points constant for percentage calculations (100%)
+    uint256 private constant BASIS_POINTS = 10000;
+    /// @notice Threshold for 40.6% win chance
+    uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203136277024736080169305172695640876056135603477262484708312135761;
+    /// @notice Threshold for 30.1% win chance
+    uint256 public constant NUMBER_TO_BEAT_2 = 81054462466121336796499689506081535497288989265948394827620308805539190747954;
+    /// @notice Threshold for 19.6% win chance
+    uint256 public constant NUMBER_TO_BEAT_3 = 93212631836039537315974642931993765821882337655840654051763355126370069360147;
+    /// @notice Threshold for 14.4% win chance
+    uint256 public constant NUMBER_TO_BEAT_4 = 99233820476379979478000334152445537030252376858453963381815149494781552101424;
+    /// @notice Threshold for 9.1% win chance
+    uint256 public constant NUMBER_TO_BEAT_5 = 105370801205957737835449596357905996146475686045732913275906401447200947972340;
 
-    // Owner
+    /// @notice Address of the contract administrator
     address public admin;
-    // Although OZ's Pausable provides a paused() flag, we also record pauseTime for withdrawal logic.
+    /// @notice Timestamp when the contract was last paused
     uint256 public pauseTime;
-
-    // VRF Configuration
-    bytes32 public keyHash; // BASE 30 gwei hash lane.
+    /// @notice VRF key hash for BASE 30 gwei hash lane
+    bytes32 public keyHash;
+    /// @notice Gas limit for VRF callback
     uint32 public callbackGasLimit;
+    /// @notice Number of confirmations required for VRF request
     uint16 public requestConfirmations;
+    /// @notice Number of random words to request from VRF
     uint32 public numWords;
-
-    // State Variables
+    /// @notice VRF subscription ID
     uint256 public s_subscriptionId;
+    /// @notice ID of the most recent VRF request
     uint256 public lastRequestId;
 
-    // Mappings
+    /// @notice Mapping of request IDs to their status details
     mapping(uint256 => RequestStatus) public s_requests;
+    /// @notice Mapping of multiplier levels to their configuration details
     mapping(uint8 => Multiplier) public multipliers;
 
-    // Modifiers
+    /// @notice Ensures function can only be called by admin
     modifier onlyAdmin() {
         if (msg.sender != admin) revert OnlyOwner();
         _;
@@ -2386,10 +865,15 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
         numWords = _numWords;
 
         // Initialize default multiplier settings.
-        multipliers[1] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_1, winMultiplier: 2 });
-        multipliers[2] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_2, winMultiplier: 3 });
-        multipliers[3] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_3, winMultiplier: 4 });
+        multipliers[1] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_1, winMultiplier: 10000 }); // 100%
+        multipliers[2] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_2, winMultiplier: 15000 }); // 150%
+        multipliers[3] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_3, winMultiplier: 20000 }); // 200%
+        multipliers[4] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_4, winMultiplier: 25000 }); // 250%
+        multipliers[5] = Multiplier({ numberToBeat: NUMBER_TO_BEAT_5, winMultiplier: 30000 }); // 300%
     }
+
+    /// @notice Allows the contract to receive ETH
+    receive() external payable {}
 
     /**
      * @notice Initializes the VRF subscription ID
@@ -2413,24 +897,6 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
         if (!s_requests[_requestId].exists) revert RequestNotFound();
         RequestStatus memory request = s_requests[_requestId];
         return (request.fulfilled, request.randomWords);
-    }
-
-    /**
-     * @notice Updates the VRF subscription ID.
-     * @param _subscriptionId The new subscription ID.
-     */
-    function setSubscriptionId(uint256 _subscriptionId) external onlyAdmin {
-        s_subscriptionId = _subscriptionId;
-        emit VRFConfigUpdated("subscriptionId", _subscriptionId);
-    }
-
-    /**
-     * @notice Updates the key hash used for VRF requests.
-     * @param _keyHash The new key hash.
-     */
-    function setKeyHash(bytes32 _keyHash) external onlyAdmin {
-        keyHash = _keyHash;
-        emit VRFConfigUpdated("keyHash", uint256(_keyHash));
     }
 
     /**
@@ -2468,30 +934,41 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     }
 
     /**
+     * @notice Allows the admin to set a new admin address.
+     * @param _admin The new admin address.
+     */
+    function setAdmin(address _admin) external onlyAdmin {
+        if (_admin == address(0)) {
+            revert InvalidAdminAddress();
+        }
+        admin = _admin;
+    }
+
+    /**
      * @notice Requests random words from Chainlink VRF for a player's game bet.
      * @param player The address of the player.
-     * @param enableNativePayment True if native payment is enabled.
-     * @param multiplier The selected multiplier (allowed values: 1, 2, or 3).
+     * @param multiplier The selected multiplier (allowed values: 1, 2, 3, 4, or 5).
      * @return requestId The unique identifier of the VRF request.
      */
     function requestRandomWords(
         address player,
-        bool enableNativePayment,
         uint8 multiplier
     ) external payable whenNotPaused nonReentrant returns (uint256 requestId) {
         // Validate bet value
-        if (msg.value < MIN_VALUE || msg.value > MAX_VALUE) {
+        if (address(this).balance == 0) {
             revert InvalidValue();
         }
 
         // Determine the contract balance before the current deposit
         uint256 currentBalance = address(this).balance - msg.value;
-        if (currentBalance == 0 || msg.value > (currentBalance * MAX_BET_PERCENT) / 10000) {
+        uint256 maxCurrentBet = _calculatePercentage(currentBalance, MAX_BET_PERCENT);
+        
+        if (currentBalance == 0 || msg.value > maxCurrentBet){
             revert InvalidValue();
         }
 
         // Validate the multiplier selection
-        if (multiplier != 1 && multiplier != 2 && multiplier != 3) {
+        if (multiplier != 1 && multiplier != 2 && multiplier != 3 && multiplier != 4 && multiplier != 5) {
             revert InvalidMultiplier();
         }
 
@@ -2505,7 +982,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
                 numWords: numWords,
                 extraArgs: VRFV2PlusClient._argsToBytes(
                     VRFV2PlusClient.ExtraArgsV1({
-                        nativePayment: enableNativePayment
+                        nativePayment: true
                     })
                 )
             })
@@ -2540,6 +1017,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
 
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
+        uint256 playerValue = s_requests[_requestId].value;
 
         uint8 multiplier = s_requests[_requestId].multiplier;
         uint256 numberToBeat = multipliers[multiplier].numberToBeat;
@@ -2547,9 +1025,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
 
         // Check if the random word meets the win condition
         if (_randomWords[0] >= numberToBeat) {
-            uint256 winAmount = s_requests[_requestId].value * multipliers[multiplier].winMultiplier;
+            uint256 winAmount = playerValue + ((playerValue * multipliers[multiplier].winMultiplier) / BASIS_POINTS);
             address player = s_requests[_requestId].player;
-            
             
             if (address(this).balance == 0) {
                 // If contract has no balance, no payout possible
@@ -2574,14 +1051,32 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
      * @notice Allows the admin to withdraw the contract's balance.
      * @dev Withdrawals are permitted only after 24 hours have passed since the contract was paused.
      */
-    function withdraw() external onlyAdmin nonReentrant {
-        if (block.timestamp < pauseTime + 24 hours) {
+    function withdraw() external onlyAdmin nonReentrant 
+    {   
+        if ( !paused() || block.timestamp < pauseTime + 24 hours) {
             revert WithdrawTimeInvalid();
         }
         (bool success, ) = admin.call{value: address(this).balance}("");
         require(success, "Withdrawal failed");
     }
 
-    /// @notice Allows the contract to receive ETH
-    receive() external payable {}
+    /**
+   * @notice Calculates percentage of an amount using basis points
+   * @dev Used for fee calculations
+   * @param amount The amount to calculate the percentage of
+   * @param basisPoints The basis points representing the percentage
+   * @return The calculated percentage of the amount
+   */
+  function _calculatePercentage(
+    uint256 amount,
+    uint256 basisPoints
+  ) internal pure returns (uint256) {
+    if (basisPoints == 0 || amount == 0) {
+      return 0;
+    }
+    if (basisPoints > BASIS_POINTS) {
+      revert InvalidReferralFeePercentage();
+    }
+    return (amount * basisPoints) / BASIS_POINTS;
+  }
 }

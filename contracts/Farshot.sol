@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
 import {IFarshot} from "./IFarshot.sol";
@@ -11,8 +11,6 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 /// @notice Contract for handling a chance-based game using Chainlink VRF for randomness
 /// @dev Implements VRFConsumerBaseV2Plus for random number generation, Pausable for emergency stops, and ReentrancyGuard for security
 contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
-    /// @notice Error thrown when VRF returns incorrect number of random words
-    error InvalidRandomWords();
 
     /// @notice Maximum bet as a percentage of contract balance (1%)
     uint256 public constant MAX_BET_PERCENT = 100;
@@ -33,7 +31,6 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     address public admin;
     /// @notice Timestamp when the contract was last paused
     uint256 public pauseTime;
-
     /// @notice VRF key hash for BASE 30 gwei hash lane
     bytes32 public keyHash;
     /// @notice Gas limit for VRF callback
@@ -42,7 +39,6 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     uint16 public requestConfirmations;
     /// @notice Number of random words to request from VRF
     uint32 public numWords;
-
     /// @notice VRF subscription ID
     uint256 public s_subscriptionId;
     /// @notice ID of the most recent VRF request
@@ -148,6 +144,17 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
             pauseTime = 0;
         }
         emit ContractPaused();
+    }
+
+    /**
+     * @notice Allows the admin to set a new admin address.
+     * @param _admin The new admin address.
+     */
+    function setAdmin(address _admin) external onlyAdmin {
+        if (_admin == address(0)) {
+            revert InvalidAdminAddress();
+        }
+        admin = _admin;
     }
 
     /**
