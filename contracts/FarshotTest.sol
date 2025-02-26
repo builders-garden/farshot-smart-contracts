@@ -274,7 +274,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
      */
     function withdraw(uint256 amount) external onlyAdmin nonReentrant 
     {   
-        if ( !paused() || block.timestamp < pauseTime + 24 hours) {
+        if ( !paused()) {
             revert WithdrawTimeInvalid();
         }
         if (amount > address(this).balance) {

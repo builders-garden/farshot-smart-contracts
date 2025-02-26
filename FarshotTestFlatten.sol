@@ -705,10 +705,10 @@ pragma solidity ^0.8.28;
 interface IFarshot {
     /// @notice Emitted when a new random number request is sent to Chainlink VRF
     /// @param requestId The unique identifier for the VRF request
-    /// @param numWords The number of random words requested
     /// @param player The address of the player making the request
+    /// @param amount The amount of ETH bet by the player
     /// @param multiplier The selected multiplier level (1-5)
-    event RequestSent(uint256 requestId, uint32 numWords, address player, uint8 multiplier);
+    event RequestSent(uint256 requestId, address player, uint256 amount, uint8 multiplier);
 
     /// @notice Emitted when a VRF request is fulfilled and the game result is determined
     /// @param requestId The ID of the fulfilled request
@@ -759,6 +759,9 @@ interface IFarshot {
     /// @notice Error thrown when an invalid admin address is provided
     error InvalidAdminAddress();
 
+    /// @notice Error thrown when an insufficient balance is provided
+    error InsufficientBalance();
+
     /// @notice Structure containing the status and details of a VRF request
     /// @param player The address of the player who made the request
     /// @param value The amount of ETH bet by the player
@@ -785,7 +788,7 @@ interface IFarshot {
 }
 
 
-// File contracts/Farshot.sol
+// File contracts/FarshotTest.sol
 
 // Original license: SPDX_License_Identifier: MIT
 pragma solidity ^0.8.28;
@@ -803,6 +806,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
     uint256 public constant MAX_BET_PERCENT = 100;
     /// @notice Basis points constant for percentage calculations (100%)
     uint256 private constant BASIS_POINTS = 10000;
+    /// @notice Protocol fee percentage (1%)
+    uint256 public constant PROTOCOL_FEE_PERCENTAGE = 100;
     /// @notice Threshold for 40.6% win chance
     uint256 public constant NUMBER_TO_BEAT_1 = 68896293096203136277024736080169305172695640876056135603477262484708312135761;
     /// @notice Threshold for 30.1% win chance
@@ -816,6 +821,8 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
 
     /// @notice Address of the contract administrator
     address public admin;
+    /// @notice Address of the protocol fee recipient
+    address public protocolFeeRecipient;
     /// @notice Timestamp when the contract was last paused
     uint256 public pauseTime;
     /// @notice VRF key hash for BASE 30 gwei hash lane
@@ -852,6 +859,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
      */
     constructor(
         address _admin,
+        address _protocolFeeRecipient,
         address _vrfCoordinator,
         bytes32 _keyHash,
         uint32 _callbackGasLimit,
@@ -859,6 +867,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
         uint32 _numWords
     ) VRFConsumerBaseV2Plus(_vrfCoordinator) {
         admin = _admin;
+        protocolFeeRecipient = _protocolFeeRecipient;
         keyHash = _keyHash;
         callbackGasLimit = _callbackGasLimit;
         requestConfirmations = _requestConfirmations;
@@ -972,6 +981,9 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
             revert InvalidMultiplier();
         }
 
+        // Calculate the protocol fee
+        uint256 amountAfterFee = _handleProtocolFee(msg.value);
+
         // Request random words from the VRF coordinator
         requestId = s_vrfCoordinator.requestRandomWords(
             VRFV2PlusClient.RandomWordsRequest({
@@ -991,7 +1003,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
         // Record the request details
         s_requests[requestId] = RequestStatus({
             player: player,
-            value: msg.value,
+            value: amountAfterFee,
             randomWords: new uint256[](0),
             exists: true,
             fulfilled: false,
@@ -999,7 +1011,7 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
         });
 
         lastRequestId = requestId;
-        emit RequestSent(requestId, numWords, player, multiplier);
+        emit RequestSent(requestId, player, amountAfterFee, multiplier);
         return requestId;
     }
 
@@ -1017,16 +1029,15 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
 
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
+        address player = s_requests[_requestId].player;
         uint256 playerValue = s_requests[_requestId].value;
-
         uint8 multiplier = s_requests[_requestId].multiplier;
         uint256 numberToBeat = multipliers[multiplier].numberToBeat;
-        uint256 payout;
 
+        uint256 payout;
         // Check if the random word meets the win condition
         if (_randomWords[0] >= numberToBeat) {
             uint256 winAmount = playerValue + ((playerValue * multipliers[multiplier].winMultiplier) / BASIS_POINTS);
-            address player = s_requests[_requestId].player;
             
             if (address(this).balance == 0) {
                 // If contract has no balance, no payout possible
@@ -1044,23 +1055,44 @@ contract Farshot is VRFConsumerBaseV2Plus, IFarshot, Pausable, ReentrancyGuard {
                 require(success, "Transfer failed");
             }
         }
-        emit RequestFulfilled(_requestId, _randomWords, payout, s_requests[_requestId].player, _randomWords[0] >= numberToBeat);
+        emit RequestFulfilled(_requestId, _randomWords, payout, player, _randomWords[0] >= numberToBeat);
     }
 
     /**
      * @notice Allows the admin to withdraw the contract's balance.
      * @dev Withdrawals are permitted only after 24 hours have passed since the contract was paused.
      */
-    function withdraw() external onlyAdmin nonReentrant 
+    function withdraw(uint256 amount) external onlyAdmin nonReentrant 
     {   
-        if ( !paused() || block.timestamp < pauseTime + 24 hours) {
+        if ( !paused()) {
             revert WithdrawTimeInvalid();
         }
-        (bool success, ) = admin.call{value: address(this).balance}("");
+        if (amount > address(this).balance) {
+            revert InsufficientBalance();
+        }
+        (bool success, ) = admin.call{value: amount}("");
         require(success, "Withdrawal failed");
     }
 
-    /**
+  /**
+   * @notice Handles protocol fee deduction and approval for Across
+   * @param amount Amount to process
+   * @return Amount after fee deduction
+   */
+  function _handleProtocolFee(
+    uint256 amount
+  ) internal returns (uint256) {
+    uint256 protocolFee = _calculatePercentage(amount, PROTOCOL_FEE_PERCENTAGE);
+    if (protocolFee == 0) {
+      return amount;
+    }
+    (bool success, ) = protocolFeeRecipient.call{value: protocolFee}("");
+    require(success, "Protocol fee transfer failed");
+    uint256 amountAfterFee = amount - protocolFee;
+    return amountAfterFee;
+  }
+
+  /**
    * @notice Calculates percentage of an amount using basis points
    * @dev Used for fee calculations
    * @param amount The amount to calculate the percentage of

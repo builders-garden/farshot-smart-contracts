@@ -7,10 +7,10 @@ pragma solidity ^0.8.28;
 interface IFarshot {
     /// @notice Emitted when a new random number request is sent to Chainlink VRF
     /// @param requestId The unique identifier for the VRF request
-    /// @param numWords The number of random words requested
     /// @param player The address of the player making the request
+    /// @param amount The amount of ETH bet by the player
     /// @param multiplier The selected multiplier level (1-5)
-    event RequestSent(uint256 requestId, uint32 numWords, address player, uint8 multiplier);
+    event RequestSent(uint256 requestId, address player, uint256 amount, uint8 multiplier);
 
     /// @notice Emitted when a VRF request is fulfilled and the game result is determined
     /// @param requestId The ID of the fulfilled request
@@ -60,6 +60,9 @@ interface IFarshot {
 
     /// @notice Error thrown when an invalid admin address is provided
     error InvalidAdminAddress();
+
+    /// @notice Error thrown when an insufficient balance is provided
+    error InsufficientBalance();
 
     /// @notice Structure containing the status and details of a VRF request
     /// @param player The address of the player who made the request
